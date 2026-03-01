@@ -44,3 +44,26 @@ export interface PaymentTemplate {
     updatedAt: number;
     lastUsedAt?: number;
 }
+
+export type TransactionStatus = 'awaiting_approval' | 'submitted' | 'confirmed' | 'canceled' | 'failed';
+
+export interface TransactionRecord {
+    id: string;
+    signature?: string;
+    contactId?: string;
+    contactName?: string;
+    senderAddress: string;
+    recipientAddress: string;
+    mintAddress: string;
+    tokenSymbol: string;
+    decimals: number;
+    amountRaw: string;
+    memo?: string;
+    network: NetworkType;
+    status: TransactionStatus;
+    errorCode?: string;
+    errorMessage?: string;
+    createdAt: number;
+    updatedAt: number;
+    confirmedAt?: number;
+}

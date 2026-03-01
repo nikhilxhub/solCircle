@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Linking, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Linking, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ScreenContainer } from '@/shared/components/ScreenContainer';
 import { AppHeader } from '@/shared/components/AppHeader';
@@ -11,7 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useCallback, useMemo } from 'react';
 import { ContactRepository } from '@/features/contacts/data/ContactRepository';
 import { PaymentTemplateRepository } from '@/features/payments/data/PaymentTemplateRepository';
-import { Contact, PaymentTemplate, TokenBalance } from '@/shared/types';
+import { TransactionRepository, createTransactionId } from '@/features/transactions/data/TransactionRepository';
+import { Contact, PaymentTemplate, TokenBalance, TransactionRecord } from '@/shared/types';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { SendSheet } from '@/shared/components/SendSheet';
@@ -29,7 +30,17 @@ import {
 import { PublicKey } from '@solana/web3.js';
 import { getExplorerTxUrl, getWalletChain } from '@/features/wallet/services/network';
 import { useWallet } from '@/features/wallet/hooks/useWallet';
-import { getWalletSendMessage, isWalletUserDeclinedError } from '@/features/wallet/services/walletErrors';
+import {
+    getWalletErrorCode,
+    getWalletErrorMessage,
+    getWalletSendMessage,
+    isWalletUserDeclinedError,
+} from '@/features/wallet/services/walletErrors';
+import {
+    formatTransactionTime,
+    getTransactionStatusLabel,
+    getTransactionStatusStyles,
+} from '@/features/transactions/services/transactionPresentation';
 
 export default function ContactDetailScreen() {
     const { id } = useLocalSearchParams();
@@ -40,6 +51,8 @@ export default function ContactDetailScreen() {
     const [loading, setLoading] = useState(true);
 
     const [templates, setTemplates] = useState<PaymentTemplate[]>([]);
+    const [contactTransactions, setContactTransactions] = useState<TransactionRecord[]>([]);
+    const [loadingContactTransactions, setLoadingContactTransactions] = useState(false);
     const [sendVisible, setSendVisible] = useState(false);
     const [tokens, setTokens] = useState<TokenBalance[]>([]);
     const [selectedToken, setSelectedToken] = useState<TokenBalance | undefined>();
@@ -60,6 +73,7 @@ export default function ContactDetailScreen() {
             if (id) {
                 loadContact(id as string);
                 loadTemplates(id as string);
+                loadContactTransactions(id as string);
             }
         }, [id])
     );
@@ -90,6 +104,18 @@ export default function ContactDetailScreen() {
             setTemplates(items);
         } catch (error) {
             console.error('Failed to load payment templates:', error);
+        }
+    };
+
+    const loadContactTransactions = async (contactId: string) => {
+        try {
+            setLoadingContactTransactions(true);
+            const items = await TransactionRepository.getTransactions({ contactId, limit: 5 });
+            setContactTransactions(items);
+        } catch (error) {
+            console.error('Failed to load contact transactions:', error);
+        } finally {
+            setLoadingContactTransactions(false);
         }
     };
 
@@ -210,6 +236,27 @@ export default function ContactDetailScreen() {
         }
     };
 
+    const handleOpenTransactionDetail = (transactionId: string) => {
+        router.push({
+            pathname: '/transactions/[id]',
+            params: { id: transactionId },
+        });
+    };
+
+    const handleViewAllTransactions = () => {
+        if (!contact) {
+            return;
+        }
+
+        router.push({
+            pathname: '/transactions',
+            params: {
+                contactId: contact.id,
+                contactName: contact.name,
+            },
+        });
+    };
+
     const handleTemplateSelect = (template: PaymentTemplate) => {
         const tokenFromWallet = tokens.find((item) => item.mintAddress === template.mintAddress);
         const decimals = tokenFromWallet?.decimals ?? (template.mintAddress === SOL_SENTINEL_MINT ? 9 : 0);
@@ -320,8 +367,14 @@ export default function ContactDetailScreen() {
             return;
         }
 
+        const transactionId = createTransactionId();
+        const senderAddress = sender.toBase58();
+        const recipientAddress = contact.walletAddress;
+        let rawAmount: bigint = 0n;
+        let transactionAttemptStored = false;
+
         try {
-            const rawAmount = amountToRaw(amount, selectedToken.decimals);
+            rawAmount = amountToRaw(amount, selectedToken.decimals);
             if (rawAmount <= 0n) {
                 Alert.alert('Invalid amount', 'Amount must be greater than zero.');
                 return;
@@ -332,6 +385,24 @@ export default function ContactDetailScreen() {
                 return;
             }
 
+            try {
+                await TransactionRepository.createAttempt({
+                    id: transactionId,
+                    contactId: contact.id,
+                    senderAddress,
+                    recipientAddress,
+                    mintAddress: selectedToken.mintAddress,
+                    tokenSymbol: selectedToken.symbol,
+                    decimals: selectedToken.decimals,
+                    amountRaw: rawAmount.toString(),
+                    memo: memo.trim() || undefined,
+                    network,
+                });
+                transactionAttemptStored = true;
+            } catch (historyError) {
+                console.error('Failed to create transaction history record:', historyError);
+            }
+
             setSending(true);
             const recipient = new PublicKey(contact.walletAddress);
 
@@ -339,6 +410,7 @@ export default function ContactDetailScreen() {
             if (selectedToken.isNative) {
                 signature = await sendSolTransfer({
                     connection: wallet.connection,
+                    signTransaction: wallet.signTransaction,
                     signAndSendTransaction: wallet.signAndSendTransaction,
                     from: sender,
                     to: recipient,
@@ -353,6 +425,7 @@ export default function ContactDetailScreen() {
 
                 signature = await sendSplTransfer({
                     connection: wallet.connection,
+                    signTransaction: wallet.signTransaction,
                     signAndSendTransaction: wallet.signAndSendTransaction,
                     owner: sender,
                     destinationOwner: recipient,
@@ -364,12 +437,36 @@ export default function ContactDetailScreen() {
                 });
             }
 
+            try {
+                if (!transactionAttemptStored) {
+                    await TransactionRepository.createAttempt({
+                        id: transactionId,
+                        contactId: contact.id,
+                        senderAddress,
+                        recipientAddress,
+                        mintAddress: selectedToken.mintAddress,
+                        tokenSymbol: selectedToken.symbol,
+                        decimals: selectedToken.decimals,
+                        amountRaw: rawAmount.toString(),
+                        memo: memo.trim() || undefined,
+                        network,
+                        status: 'submitted',
+                    });
+                    transactionAttemptStored = true;
+                }
+                await TransactionRepository.markSubmitted(transactionId, signature);
+                await TransactionRepository.markConfirmed(transactionId, signature);
+            } catch (historyError) {
+                console.error('Failed to update transaction history after success:', historyError);
+            }
+
             if (selectedTemplateId) {
                 await PaymentTemplateRepository.touchTemplate(selectedTemplateId);
                 await loadTemplates(contact.id);
             }
 
             await refreshTokens(sender);
+            await loadContactTransactions(contact.id);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
             Alert.alert('Transfer confirmed', 'Transaction sent successfully.', [
@@ -392,9 +489,41 @@ export default function ContactDetailScreen() {
             ]);
         } catch (error: unknown) {
             const sendMessage = getWalletSendMessage(error);
+            const errorCode = getWalletErrorCode(error);
+            const errorMessage = getWalletErrorMessage(error);
+            const status = isWalletUserDeclinedError(error) ? 'canceled' : 'failed';
+
+            try {
+                if (!transactionAttemptStored) {
+                    await TransactionRepository.createAttempt({
+                        id: transactionId,
+                        contactId: contact.id,
+                        senderAddress,
+                        recipientAddress,
+                        mintAddress: selectedToken.mintAddress,
+                        tokenSymbol: selectedToken.symbol,
+                        decimals: selectedToken.decimals,
+                        amountRaw: rawAmount > 0n ? rawAmount.toString() : '0',
+                        memo: memo.trim() || undefined,
+                        network,
+                        status: 'awaiting_approval',
+                    });
+                    transactionAttemptStored = true;
+                }
+
+                if (status === 'canceled') {
+                    await TransactionRepository.markCanceled(transactionId, errorCode, errorMessage || sendMessage);
+                } else {
+                    await TransactionRepository.markFailed(transactionId, errorCode, errorMessage || sendMessage);
+                }
+            } catch (historyError) {
+                console.error('Failed to update transaction history after error:', historyError);
+            }
+
+            await loadContactTransactions(contact.id);
 
             if (isWalletUserDeclinedError(error)) {
-                Alert.alert('Transfer canceled', sendMessage);
+                Alert.alert('Transfer canceled', `${sendMessage}\n\n${wallet.getDisconnectErrorAlertMessage(error)}`);
                 return;
             }
 
@@ -474,6 +603,51 @@ export default function ContactDetailScreen() {
                         style={styles.heroButtonSecondary}
                         labelStyle={styles.heroLabelSecondary}
                     />
+                </View>
+
+                <View style={styles.historySection}>
+                    <View style={styles.historyHeaderRow}>
+                        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+                        <TextButton title="View all" onPress={handleViewAllTransactions} />
+                    </View>
+
+                    {loadingContactTransactions ? (
+                        <View style={styles.historyLoadingRow}>
+                            <ActivityIndicator size="small" color={Colors.text} />
+                            <Text style={styles.historyEmptyText}>Loading transactions...</Text>
+                        </View>
+                    ) : contactTransactions.length === 0 ? (
+                        <Text style={styles.historyEmptyText}>No transactions with this contact yet.</Text>
+                    ) : (
+                        contactTransactions.map((transaction) => {
+                            const amountUi = rawToAmountUi(BigInt(transaction.amountRaw), transaction.decimals);
+                            const statusStyle = getTransactionStatusStyles(transaction.status);
+
+                            return (
+                                <TouchableOpacity
+                                    key={transaction.id}
+                                    style={styles.historyItem}
+                                    activeOpacity={0.7}
+                                    onPress={() => handleOpenTransactionDetail(transaction.id)}
+                                >
+                                    <View style={styles.historyItemTopRow}>
+                                        <Text style={styles.historyAmount}>{`${amountUi} ${transaction.tokenSymbol}`}</Text>
+                                        <View
+                                            style={[
+                                                styles.historyStatusBadge,
+                                                { backgroundColor: statusStyle.backgroundColor },
+                                            ]}
+                                        >
+                                            <Text style={[styles.historyStatusText, { color: statusStyle.color }]}>
+                                                {getTransactionStatusLabel(transaction.status)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.historyMeta}>{`${formatTransactionTime(transaction.createdAt)} · ${transaction.network}`}</Text>
+                                </TouchableOpacity>
+                            );
+                        })
+                    )}
                 </View>
 
                 <View style={styles.detailsSection}>
@@ -624,6 +798,65 @@ const styles = StyleSheet.create({
         marginTop: 8,
         fontWeight: '600',
         color: Colors.text,
+    },
+    historySection: {
+        marginBottom: Layout.spacing.xl,
+    },
+    historyHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Layout.spacing.sm,
+    },
+    sectionTitle: {
+        ...Typography.styles.caption,
+        color: Colors.textTertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        fontWeight: '700',
+    },
+    historyLoadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Layout.spacing.sm,
+        paddingVertical: Layout.spacing.sm,
+    },
+    historyEmptyText: {
+        ...Typography.styles.caption,
+        color: Colors.textSecondary,
+    },
+    historyItem: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: Layout.radius.md,
+        paddingHorizontal: Layout.spacing.md,
+        paddingVertical: Layout.spacing.sm,
+        marginBottom: Layout.spacing.sm,
+    },
+    historyItemTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    historyAmount: {
+        ...Typography.styles.body,
+        fontWeight: '700',
+        color: Colors.text,
+    },
+    historyStatusBadge: {
+        borderRadius: Layout.radius.round,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+    },
+    historyStatusText: {
+        ...Typography.styles.caption,
+        fontWeight: '700',
+        fontSize: 11,
+    },
+    historyMeta: {
+        ...Typography.styles.caption,
+        color: Colors.textTertiary,
+        marginTop: 4,
     },
     detailsSection: {
         marginBottom: Layout.spacing.xxl,

@@ -19,6 +19,8 @@ export default function RootLayout() {
                 >
                     <Stack.Screen name="index" />
                     <Stack.Screen name="home/index" />
+                    <Stack.Screen name="transactions/index" />
+                    <Stack.Screen name="transactions/[id]" />
                     <Stack.Screen name="contact/add" />
                     <Stack.Screen name="contact/[id]" />
                     <Stack.Screen name="contact/edit/[id]" />
@@ -27,6 +29,8 @@ export default function RootLayout() {
                     <Stack.Screen name="settings/index" />
                     <Stack.Screen name="settings/profile/index" />
                     <Stack.Screen name="settings/profile/edit" />
+                    <Stack.Screen name="wallet/phantom-connect" />
+                    <Stack.Screen name="wallet/phantom-sign" />
                 </Stack>
             </View>
         </AppProviders>

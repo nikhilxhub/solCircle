@@ -26,7 +26,7 @@ export function isWalletUserDeclinedError(error: unknown): boolean {
     const code = getWalletErrorCode(error);
     const message = getWalletErrorMessage(error).toLowerCase();
 
-    if (code === '-3' || code === 'ERROR_NOT_SIGNED') {
+    if (code === '-3' || code === '4001' || code === 'ERROR_NOT_SIGNED') {
         return true;
     }
 

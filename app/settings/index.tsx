@@ -69,6 +69,7 @@ export default function SettingsScreen() {
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.section}>
                     <ListItem label="My Profile" showChevron onPress={() => router.push('/settings/profile')} />
+                    <ListItem label="Transaction History" showChevron onPress={() => router.push('/transactions')} />
 
                     <View style={styles.row}>
                         <View>

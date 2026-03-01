@@ -15,6 +15,7 @@ import {
     TransactionInstruction,
 } from '@solana/web3.js';
 import { TokenBalance } from '@/shared/types';
+import { isWalletUserDeclinedError } from '@/features/wallet/services/walletErrors';
 
 export const SOL_SENTINEL_MINT = 'SOL';
 const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
@@ -133,13 +134,34 @@ function addMemoInstructionIfPresent(transaction: Transaction, memo?: string) {
 
 async function signSendAndConfirm(
     connection: Connection,
+    signTransaction: ((transaction: Transaction) => Promise<Transaction>) | undefined,
     signAndSendTransaction: (transaction: Transaction, minContextSlot: number) => Promise<string>,
     transaction: Transaction
 ): Promise<string> {
-    const latest = await connection.getLatestBlockhashAndContext('finalized');
+    const latest = await connection.getLatestBlockhashAndContext('confirmed');
     transaction.recentBlockhash = latest.value.blockhash;
 
-    const signature = await signAndSendTransaction(transaction, latest.context.slot);
+    let signature: string;
+
+    if (signTransaction) {
+        try {
+            const signedTx = await signTransaction(transaction);
+            signature = await connection.sendRawTransaction(signedTx.serialize(), {
+                preflightCommitment: 'confirmed',
+            });
+        } catch (error) {
+            if (isWalletUserDeclinedError(error)) {
+                throw error;
+            }
+
+            console.warn('signTransaction flow failed, falling back to signAndSendTransaction', {
+                message: error instanceof Error ? error.message : String(error),
+            });
+            signature = await signAndSendTransaction(transaction, latest.context.slot);
+        }
+    } else {
+        signature = await signAndSendTransaction(transaction, latest.context.slot);
+    }
 
     await connection.confirmTransaction(
         {
@@ -155,6 +177,7 @@ async function signSendAndConfirm(
 
 export async function sendSolTransfer(params: {
     connection: Connection;
+    signTransaction?: (transaction: Transaction) => Promise<Transaction>;
     signAndSendTransaction: (transaction: Transaction, minContextSlot: number) => Promise<string>;
     from: PublicKey;
     to: PublicKey;
@@ -179,11 +202,12 @@ export async function sendSolTransfer(params: {
 
     addMemoInstructionIfPresent(transaction, params.memo);
 
-    return signSendAndConfirm(params.connection, params.signAndSendTransaction, transaction);
+    return signSendAndConfirm(params.connection, params.signTransaction, params.signAndSendTransaction, transaction);
 }
 
 export async function sendSplTransfer(params: {
     connection: Connection;
+    signTransaction?: (transaction: Transaction) => Promise<Transaction>;
     signAndSendTransaction: (transaction: Transaction, minContextSlot: number) => Promise<string>;
     owner: PublicKey;
     destinationOwner: PublicKey;
@@ -238,5 +262,5 @@ export async function sendSplTransfer(params: {
 
     addMemoInstructionIfPresent(transaction, params.memo);
 
-    return signSendAndConfirm(params.connection, params.signAndSendTransaction, transaction);
+    return signSendAndConfirm(params.connection, params.signTransaction, params.signAndSendTransaction, transaction);
 }

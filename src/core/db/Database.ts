@@ -63,6 +63,36 @@ export async function createTable() {
 
         CREATE INDEX IF NOT EXISTS idx_payment_templates_last_used
             ON payment_templates(contactId, lastUsedAt DESC, updatedAt DESC);
+
+        CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY NOT NULL,
+            signature TEXT,
+            contactId TEXT,
+            senderAddress TEXT NOT NULL,
+            recipientAddress TEXT NOT NULL,
+            mintAddress TEXT NOT NULL,
+            tokenSymbol TEXT NOT NULL,
+            decimals INTEGER NOT NULL,
+            amountRaw TEXT NOT NULL,
+            memo TEXT,
+            network TEXT NOT NULL,
+            status TEXT NOT NULL,
+            errorCode TEXT,
+            errorMessage TEXT,
+            createdAt INTEGER NOT NULL,
+            updatedAt INTEGER NOT NULL,
+            confirmedAt INTEGER,
+            FOREIGN KEY(contactId) REFERENCES contacts(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_created_at
+            ON transactions(createdAt DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_contact_created
+            ON transactions(contactId, createdAt DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_signature
+            ON transactions(signature);
     `);
 
     const addColumn = async (tableName: string, columnDefinition: string) => {
@@ -81,4 +111,8 @@ export async function createTable() {
     await addColumn('contacts', 'avatarUri TEXT');
     await addColumn('contacts', 'notes TEXT');
     await addColumn('payment_templates', 'lastUsedAt INTEGER');
+    await addColumn('transactions', 'status TEXT');
+    await addColumn('transactions', 'errorCode TEXT');
+    await addColumn('transactions', 'errorMessage TEXT');
+    await addColumn('transactions', 'confirmedAt INTEGER');
 }
