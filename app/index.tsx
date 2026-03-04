@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors } from '../constants/Colors';
-import { Typography } from '../constants/Typography';
+import { Colors } from '@/shared/theme/Colors';
+import { Typography } from '@/shared/theme/Typography';
 
 export default function SplashScreen() {
     const router = useRouter();
@@ -25,7 +25,7 @@ export default function SplashScreen() {
     return (
         <View style={styles.container}>
             <Animated.Text style={[styles.logo, { opacity: fadeAnim }]}>
-                Seeker
+                SolCircle
             </Animated.Text>
         </View>
     );

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { AppHeader } from '../../../components/AppHeader';
-import { InputField } from '../../../components/InputField';
-import { PrimaryButton } from '../../../components/Buttons';
-import { Layout } from '../../../constants/Layout';
-import { UserProfileRepository } from '../../../repositories/UserProfileRepository';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { InputField } from '@/shared/components/InputField';
+import { PrimaryButton } from '@/shared/components/Buttons';
+import { Layout } from '@/shared/theme/Layout';
+import { UserProfileRepository } from '@/features/profile/data/UserProfileRepository';
 
 export default function EditProfileScreen() {
     const router = useRouter();

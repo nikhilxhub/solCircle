@@ -4,15 +4,15 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { AppHeader } from '../../../components/AppHeader';
-import { PrimaryButton, TextButton } from '../../../components/Buttons';
-import { Avatar } from '../../../components/Avatar';
-import { ListItem } from '../../../components/ListItem';
-import { Layout } from '../../../constants/Layout';
-import { Colors } from '../../../constants/Colors';
-import { Typography } from '../../../constants/Typography';
-import { UserProfileRepository, UserProfile } from '../../../repositories/UserProfileRepository';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { PrimaryButton, TextButton } from '@/shared/components/Buttons';
+import { Avatar } from '@/shared/components/Avatar';
+import { ListItem } from '@/shared/components/ListItem';
+import { Layout } from '@/shared/theme/Layout';
+import { Colors } from '@/shared/theme/Colors';
+import { Typography } from '@/shared/theme/Typography';
+import { UserProfileRepository, UserProfile } from '@/features/profile/data/UserProfileRepository';
 
 const { width } = Dimensions.get('window');
 

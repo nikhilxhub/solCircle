@@ -1,14 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { View, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { ScreenContainer } from '../../components/ScreenContainer';
-import { AppHeader } from '../../components/AppHeader';
-import { ContactCard } from '../../components/ContactCard';
-import { Layout } from '../../constants/Layout';
-import { Colors } from '../../constants/Colors';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { ContactCard } from '@/shared/components/ContactCard';
+import { Layout } from '@/shared/theme/Layout';
+import { Colors } from '@/shared/theme/Colors';
 import { Ionicons } from '@expo/vector-icons';
-import { ContactRepository } from '../../repositories/ContactRepository';
-import { Contact } from '../../types';
+import { ContactRepository } from '@/features/contacts/data/ContactRepository';
+import { Contact } from '@/shared/types';
 
 
 
@@ -47,6 +47,10 @@ export default function HomeScreen() {
         router.push('/settings');
     };
 
+    const handleTransactionsPress = () => {
+        router.push('/transactions');
+    };
+
     return (
         <ScreenContainer>
             <AppHeader
@@ -55,6 +59,12 @@ export default function HomeScreen() {
                     <View style={{ flexDirection: 'row' }}>
                         <TouchableOpacity onPress={handleSettingsPress} style={styles.iconButton}>
                             <Ionicons name="person-circle-outline" size={28} color={Colors.text} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={handleTransactionsPress}
+                            style={[styles.iconButton, { marginLeft: Layout.spacing.md }]}
+                        >
+                            <Ionicons name="receipt-outline" size={24} color={Colors.text} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => router.push('/qr/scan')} style={[styles.iconButton, { marginLeft: Layout.spacing.md }]}>
                             <Ionicons name="scan-outline" size={24} color={Colors.text} />

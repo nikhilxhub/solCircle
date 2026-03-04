@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ScreenContainer } from '../../components/ScreenContainer';
-import { AppHeader } from '../../components/AppHeader';
-import { Layout } from '../../constants/Layout';
-import { InputField } from '../../components/InputField';
-import { Colors } from '../../constants/Colors';
-import { ContactRepository } from '../../repositories/ContactRepository';
-import { Contact } from '../../types';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { Layout } from '@/shared/theme/Layout';
+import { InputField } from '@/shared/components/InputField';
+import { Colors } from '@/shared/theme/Colors';
+import { ContactRepository } from '@/features/contacts/data/ContactRepository';
+import { Contact } from '@/shared/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 

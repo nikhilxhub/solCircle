@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { AppHeader } from '../../../components/AppHeader';
-import { Layout } from '../../../constants/Layout';
-import { InputField } from '../../../components/InputField';
-import { PrimaryButton, TextButton } from '../../../components/Buttons';
-import { ContactRepository } from '../../../repositories/ContactRepository';
-import { Contact } from '../../../types';
-import { Colors } from '../../../constants/Colors';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { Layout } from '@/shared/theme/Layout';
+import { InputField } from '@/shared/components/InputField';
+import { PrimaryButton, TextButton } from '@/shared/components/Buttons';
+import { ContactRepository } from '@/features/contacts/data/ContactRepository';
+import { Contact } from '@/shared/types';
+import { Colors } from '@/shared/theme/Colors';
 
 export default function EditContactScreen() {
     const { id } = useLocalSearchParams();

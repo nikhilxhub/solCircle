@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Button, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { ScreenContainer } from '../../components/ScreenContainer';
-import { TextButton } from '../../components/Buttons';
-import { Layout } from '../../constants/Layout';
-import { Typography } from '../../constants/Typography';
-import { Colors } from '../../constants/Colors';
+import { TextButton } from '@/shared/components/Buttons';
+import { Layout } from '@/shared/theme/Layout';
+import { Typography } from '@/shared/theme/Typography';
 import { StatusBar } from 'expo-status-bar';
+import { parseContactQrData } from '@/features/qr/services/contactQr';
 
 export default function QRScanScreen() {
     const router = useRouter();
@@ -15,49 +14,47 @@ export default function QRScanScreen() {
     const [scanned, setScanned] = useState(false);
 
     if (!permission) {
-        // Camera permissions are still loading.
         return <View style={styles.container} />;
     }
 
     if (!permission.granted) {
-        // Camera permissions are not granted yet.
         return (
             <View style={styles.container}>
-                <View style={[styles.messageContainer, { padding: 20, alignItems: 'center', justifyContent: 'center', flex: 1 }]}>
-                    <Text style={[styles.message, { color: 'white', marginBottom: 20, textAlign: 'center' }]}>
-                        We need your permission to show the camera
-                    </Text>
-                    <Button onPress={requestPermission} title="grant permission" />
+                <View style={styles.messageContainer}>
+                    <Text style={styles.message}>We need your permission to show the camera</Text>
+                    <Button onPress={requestPermission} title="Grant Permission" />
                 </View>
             </View>
         );
     }
 
-    const handleBarcodeScanned = ({ type, data }: { type: string; data: string }) => {
+    const handleBarcodeScanned = ({ data }: { type: string; data: string }) => {
         setScanned(true);
 
-        try {
-            const parsedData = JSON.parse(data);
-            // Check if it looks like our contact object
-            if (parsedData.wallet || parsedData.name) {
-                router.push({
-                    pathname: '/contact/add',
-                    params: {
-                        name: parsedData.name || '',
-                        phone: parsedData.phone || '',
-                        walletAddress: parsedData.wallet || '',
-                        skrAddress: parsedData.skr || ''
-                    }
-                });
-                return;
-            }
-        } catch (e) {
-            // Not JSON, treat as plain wallet address
+        const parsed = parseContactQrData(data);
+        if (!parsed) {
+            Alert.alert('Invalid QR', 'This QR code is not a supported contact payload.', [
+                {
+                    text: 'Scan Again',
+                    onPress: () => setScanned(false),
+                },
+                {
+                    text: 'Cancel',
+                    onPress: () => router.back(),
+                    style: 'cancel',
+                },
+            ]);
+            return;
         }
 
         router.push({
             pathname: '/contact/add',
-            params: { walletAddress: data }
+            params: {
+                name: parsed.name || '',
+                phone: parsed.phoneNumber || '',
+                walletAddress: parsed.walletAddress || '',
+                skrAddress: parsed.skrAddress || '',
+            },
         });
     };
 
@@ -70,7 +67,7 @@ export default function QRScanScreen() {
                 facing="back"
                 onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
                 barcodeScannerSettings={{
-                    barcodeTypes: ["qr"],
+                    barcodeTypes: ['qr'],
                 }}
             />
 
@@ -85,10 +82,7 @@ export default function QRScanScreen() {
                 </View>
 
                 <View style={styles.footer}>
-                    <TextButton
-                        title="Cancel"
-                        onPress={() => router.back()}
-                    />
+                    <TextButton title="Cancel" onPress={() => router.back()} />
                 </View>
             </View>
         </View>
@@ -101,22 +95,26 @@ const styles = StyleSheet.create({
         backgroundColor: '#000',
     },
     messageContainer: {
-        flex: 1,
+        padding: 20,
+        alignItems: 'center',
         justifyContent: 'center',
+        flex: 1,
     },
     message: {
+        ...Typography.styles.body,
+        color: '#fff',
+        marginBottom: 20,
         textAlign: 'center',
-        paddingBottom: 10,
     },
     overlay: {
-        flex: 1,
+        ...StyleSheet.absoluteFillObject,
         justifyContent: 'space-between',
         paddingVertical: Layout.spacing.xxl,
     },
     header: {
         alignItems: 'center',
         marginTop: Layout.spacing.xl,
-        paddingHorizontal: Layout.spacing.lg, // Add padding to prevent edge touching
+        paddingHorizontal: Layout.spacing.lg,
     },
     title: {
         ...Typography.styles.title,
@@ -128,10 +126,10 @@ const styles = StyleSheet.create({
         ...Typography.styles.body,
         color: '#ccc',
         textAlign: 'center',
-        width: '100%', // Ensure it takes full width to avoid unnecessary wrapping
+        width: '100%',
     },
     scanFrameContainer: {
-        flex: 1, // Allow it to take available space
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -146,11 +144,5 @@ const styles = StyleSheet.create({
     footer: {
         alignItems: 'center',
         marginBottom: Layout.spacing.lg,
-    },
-    // Overlay structure correction
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'space-between',
-        paddingVertical: Layout.spacing.xxl,
     },
 });

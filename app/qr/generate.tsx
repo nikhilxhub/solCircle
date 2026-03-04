@@ -5,14 +5,15 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 
-import { ScreenContainer } from '../../components/ScreenContainer';
-import { AppHeader } from '../../components/AppHeader';
-import { PrimaryButton, TextButton } from '../../components/Buttons';
-import { Avatar } from '../../components/Avatar';
-import { Layout } from '../../constants/Layout';
-import { Typography } from '../../constants/Typography';
-import { Colors } from '../../constants/Colors';
-import { UserProfileRepository } from '../../repositories/UserProfileRepository';
+import { ScreenContainer } from '@/shared/components/ScreenContainer';
+import { AppHeader } from '@/shared/components/AppHeader';
+import { PrimaryButton, TextButton } from '@/shared/components/Buttons';
+import { Avatar } from '@/shared/components/Avatar';
+import { Layout } from '@/shared/theme/Layout';
+import { Typography } from '@/shared/theme/Typography';
+import { Colors } from '@/shared/theme/Colors';
+import { UserProfileRepository } from '@/features/profile/data/UserProfileRepository';
+import { buildContactQrPayload } from '@/features/qr/services/contactQr';
 
 const { width } = Dimensions.get('window');
 
@@ -22,12 +23,12 @@ export default function QRGenerateScreen() {
     const [qrData, setQrData] = useState('');
     const [displayData, setDisplayData] = useState({
         name: '',
-        wallet: '',
+        walletAddress: '',
         handle: '',
-        phone: ''
+        phoneNumber: '',
     });
 
-    const isSharedContact = !!params.wallet || !!params.name;
+    const isSharedContact = !!params.walletAddress || !!params.name;
 
     useEffect(() => {
         loadData();
@@ -37,52 +38,45 @@ export default function QRGenerateScreen() {
         setLoading(true);
         try {
             if (isSharedContact) {
-                // Formatting data from params (Shared Contact)
-                const data = {
+                const payload = buildContactQrPayload({
                     name: params.name as string,
-                    phone: params.phone as string || '',
-                    wallet: params.wallet as string || '',
-                    skrAddress: params.skr as string || '',
-                    type: 'contact_card'
-                };
-                setQrData(JSON.stringify(data));
+                    phoneNumber: (params.phoneNumber as string) || (params.phone as string) || '',
+                    walletAddress: (params.walletAddress as string) || (params.wallet as string) || '',
+                    skrAddress: (params.skrAddress as string) || (params.skr as string) || '',
+                });
+
+                setQrData(JSON.stringify(payload));
                 setDisplayData({
-                    name: data.name,
-                    wallet: data.wallet,
-                    handle: data.skrAddress ? data.skrAddress.replace('seeker:', '') : '',
-                    phone: data.phone
+                    name: payload.name || '',
+                    walletAddress: payload.walletAddress || '',
+                    handle: payload.skrAddress ? payload.skrAddress.replace('seeker:', '') : '',
+                    phoneNumber: payload.phoneNumber || '',
                 });
             } else {
-                // Loading My Profile (My Identity)
                 const profile = await UserProfileRepository.getProfile();
                 if (profile) {
-                    const data = {
+                    const payload = buildContactQrPayload({
                         name: profile.name || '',
                         phoneNumber: profile.phoneNumber || '',
                         walletAddress: profile.walletAddress || '',
                         skrAddress: profile.skrAddress || '',
-                        type: 'contact_card'
-                    };
-                    setQrData(JSON.stringify(data));
+                    });
+
+                    setQrData(JSON.stringify(payload));
                     setDisplayData({
-                        name: profile.name || 'My Identity',
-                        wallet: profile.walletAddress || '',
-                        handle: profile.skrAddress ? profile.skrAddress.replace('seeker:', '') : '',
-                        phone: profile.phoneNumber || ''
+                        name: payload.name || 'My Identity',
+                        walletAddress: payload.walletAddress || '',
+                        handle: payload.skrAddress ? payload.skrAddress.replace('seeker:', '') : '',
+                        phoneNumber: payload.phoneNumber || '',
                     });
                 } else {
-                    // Fallback if no profile exists
-                    const data = {
-                        name: 'My Identity',
-                        wallet: '',
-                        type: 'contact_card'
-                    };
-                    setQrData(JSON.stringify(data));
+                    const payload = buildContactQrPayload({ name: 'My Identity' });
+                    setQrData(JSON.stringify(payload));
                     setDisplayData({
                         name: 'My Identity',
-                        wallet: '',
+                        walletAddress: '',
                         handle: '',
-                        phone: ''
+                        phoneNumber: '',
                     });
                 }
             }
@@ -94,14 +88,14 @@ export default function QRGenerateScreen() {
     };
 
     const handleCopy = async () => {
-        if (displayData.wallet) {
-            await Clipboard.setStringAsync(displayData.wallet);
+        if (displayData.walletAddress) {
+            await Clipboard.setStringAsync(displayData.walletAddress);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
     };
 
     const handleShare = () => {
-        // Share logic placeholder
+        // Native share can be added here later.
     };
 
     if (loading) {
@@ -119,48 +113,38 @@ export default function QRGenerateScreen() {
         <ScreenContainer>
             <AppHeader title="Share Identity" showBack />
             <ScrollView contentContainerStyle={styles.content}>
-
-                {/* 1. Identity Section (Top) */}
                 <View style={styles.identitySection}>
                     <Avatar name={displayData.name} size={80} />
                     <Text style={styles.name}>{displayData.name}</Text>
-                    {!!displayData.handle && (
-                        <Text style={styles.handle}>@{displayData.handle}</Text>
-                    )}
+                    {!!displayData.handle && <Text style={styles.handle}>@{displayData.handle}</Text>}
                 </View>
 
-                {/* 2. QR Section (Middle / Golden Zone) */}
                 <View style={styles.qrSection}>
                     <QRCode
                         value={qrData}
-                        size={width * 0.65} // Large and center
+                        size={width * 0.65}
                         color={Colors.text}
                         backgroundColor={Colors.background}
                         quietZone={10}
                     />
-                    <Text style={styles.qrHelper}>
-                        {isSharedContact ? `Scan to add` : 'Scan to connect'}
-                    </Text>
+                    <Text style={styles.qrHelper}>{isSharedContact ? 'Scan to add' : 'Scan to connect'}</Text>
                 </View>
 
-                {/* 3. Details (Bottom) */}
                 <View style={styles.detailsSection}>
-                    {!!displayData.wallet && (
+                    {!!displayData.walletAddress && (
                         <>
                             <Text style={styles.addressLabel}>WALLET ADDRESS</Text>
                             <Text style={styles.addressValue} numberOfLines={1} ellipsizeMode="middle">
-                                {displayData.wallet}
+                                {displayData.walletAddress}
                             </Text>
                         </>
                     )}
                 </View>
 
-                {/* 4. Actions (Footer) */}
                 <View style={styles.actionSection}>
                     <PrimaryButton title="Share Contact" onPress={handleShare} style={styles.actionButton} />
                     <TextButton title="Copy Address" onPress={handleCopy} />
                 </View>
-
             </ScrollView>
         </ScreenContainer>
     );
@@ -173,12 +157,10 @@ const styles = StyleSheet.create({
         paddingBottom: Layout.spacing.xxl,
         alignItems: 'center',
     },
-
-    // Identity
     identitySection: {
         alignItems: 'center',
         marginTop: Layout.spacing.lg,
-        marginBottom: 60, // Increased spacing to prevent OCR interference
+        marginBottom: 60,
     },
     name: {
         ...Typography.styles.title,
@@ -191,8 +173,6 @@ const styles = StyleSheet.create({
         color: Colors.textTertiary,
         marginTop: 4,
     },
-
-    // QR
     qrSection: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -206,8 +186,6 @@ const styles = StyleSheet.create({
         letterSpacing: 2,
         fontSize: 10,
     },
-
-    // Details 
     detailsSection: {
         width: '100%',
         alignItems: 'center',
@@ -215,7 +193,7 @@ const styles = StyleSheet.create({
     },
     addressLabel: {
         ...Typography.styles.caption,
-        color: Colors.textTertiary, // lighter
+        color: Colors.textTertiary,
         fontWeight: '700',
         fontSize: 10,
         marginBottom: 4,
@@ -228,14 +206,12 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         maxWidth: '80%',
     },
-
-    // Actions
     actionSection: {
         width: '100%',
         gap: Layout.spacing.md,
-        marginTop: 'auto', // Push to bottom
+        marginTop: 'auto',
     },
     actionButton: {
         width: '100%',
-    }
+    },
 });
