@@ -10,12 +10,23 @@ interface TemplateChipsProps {
     templates: PaymentTemplate[];
     tokenMap: Record<string, TokenBalance | undefined>;
     onSelect: (template: PaymentTemplate) => void;
+    onViewAll?: () => void;
+    viewAllThreshold?: number;
 }
 
-export function TemplateChips({ templates, tokenMap, onSelect }: TemplateChipsProps) {
+export function TemplateChips({
+    templates,
+    tokenMap,
+    onSelect,
+    onViewAll,
+    viewAllThreshold = 4,
+}: TemplateChipsProps) {
     if (templates.length === 0) {
         return null;
     }
+
+    const showViewAllChip = Boolean(onViewAll) && templates.length >= viewAllThreshold;
+    const templateCountLabel = `${templates.length} ${templates.length === 1 ? 'template' : 'templates'}`;
 
     return (
         <View style={styles.wrapper}>
@@ -25,6 +36,13 @@ export function TemplateChips({ templates, tokenMap, onSelect }: TemplateChipsPr
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.container}
             >
+                {showViewAllChip && (
+                    <TouchableOpacity style={[styles.chip, styles.viewAllChip]} onPress={onViewAll} activeOpacity={0.8}>
+                        <Text style={styles.viewAllTitle}>View all</Text>
+                        <Text style={styles.viewAllDetail}>{templateCountLabel}</Text>
+                    </TouchableOpacity>
+                )}
+
                 {templates.map((template) => {
                     const token = tokenMap[template.mintAddress];
                     const decimals = token?.decimals ?? (template.mintAddress === SOL_SENTINEL_MINT ? 9 : 0);
@@ -83,6 +101,21 @@ const styles = StyleSheet.create({
         ...Typography.styles.body,
         color: Colors.text,
         fontWeight: '600',
+        marginTop: 2,
+    },
+    viewAllChip: {
+        borderColor: Colors.borderDark,
+    },
+    viewAllTitle: {
+        ...Typography.styles.caption,
+        color: Colors.text,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    viewAllDetail: {
+        ...Typography.styles.caption,
+        color: Colors.textSecondary,
         marginTop: 2,
     },
 });

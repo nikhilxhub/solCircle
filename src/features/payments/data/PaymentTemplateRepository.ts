@@ -38,6 +38,35 @@ export class PaymentTemplateRepository {
         }));
     }
 
+    static async getAllTemplates(): Promise<PaymentTemplate[]> {
+        const db = await getDBConnection();
+        const rows = await db.getAllAsync<PaymentTemplate>(
+            `SELECT id, contactId, label, mintAddress, amountRaw, memo, createdAt, updatedAt, lastUsedAt
+             FROM payment_templates
+             ORDER BY COALESCE(lastUsedAt, 0) DESC, updatedAt DESC`
+        );
+
+        return rows.map((row) => ({
+            ...row,
+            memo: row.memo || undefined,
+            lastUsedAt: row.lastUsedAt || undefined,
+        }));
+    }
+
+    static async hasTemplateLabelForContact(contactId: string, label: string): Promise<boolean> {
+        const db = await getDBConnection();
+        const existing = await db.getFirstAsync<{ id: string }>(
+            `SELECT id
+             FROM payment_templates
+             WHERE contactId = ?
+               AND LOWER(TRIM(label)) = LOWER(TRIM(?))
+             LIMIT 1`,
+            [contactId, label]
+        );
+
+        return Boolean(existing);
+    }
+
     static async touchTemplate(id: string): Promise<void> {
         const db = await getDBConnection();
         const now = Date.now();

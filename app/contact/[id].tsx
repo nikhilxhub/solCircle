@@ -1,4 +1,16 @@
-import { View, Text, StyleSheet, ScrollView, Linking, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+    View,
+    Text,
+    StyleSheet,
+    ScrollView,
+    Linking,
+    Alert,
+    TouchableOpacity,
+    ActivityIndicator,
+    Modal,
+    Animated,
+    Easing,
+} from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ScreenContainer } from '@/shared/components/ScreenContainer';
 import { AppHeader } from '@/shared/components/AppHeader';
@@ -8,7 +20,7 @@ import { Layout } from '@/shared/theme/Layout';
 import { Typography } from '@/shared/theme/Typography';
 import { Colors } from '@/shared/theme/Colors';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { ContactRepository } from '@/features/contacts/data/ContactRepository';
 import { PaymentTemplateRepository } from '@/features/payments/data/PaymentTemplateRepository';
 import { TransactionRepository, createTransactionId } from '@/features/transactions/data/TransactionRepository';
@@ -58,11 +70,15 @@ export default function ContactDetailScreen() {
     const [selectedToken, setSelectedToken] = useState<TokenBalance | undefined>();
     const [loadingTokens, setLoadingTokens] = useState(false);
     const [sending, setSending] = useState(false);
+    const [savingTemplate, setSavingTemplate] = useState(false);
+    const [showTemplateSavedPopup, setShowTemplateSavedPopup] = useState(false);
 
     const [amount, setAmount] = useState('');
     const [memo, setMemo] = useState('');
     const [templateLabel, setTemplateLabel] = useState('');
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    const templateSavedAnim = useRef(new Animated.Value(0)).current;
+    const templateSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const wallet = useWallet();
     const accountPublicKey: PublicKey | undefined = wallet.publicKey;
@@ -85,6 +101,41 @@ export default function ContactDetailScreen() {
         }
         return map;
     }, [tokens]);
+
+    useEffect(() => {
+        return () => {
+            if (templateSavedTimerRef.current) {
+                clearTimeout(templateSavedTimerRef.current);
+            }
+        };
+    }, []);
+
+    const showTemplateSavedFeedback = () => {
+        if (templateSavedTimerRef.current) {
+            clearTimeout(templateSavedTimerRef.current);
+        }
+
+        setShowTemplateSavedPopup(true);
+        templateSavedAnim.setValue(0);
+        Animated.spring(templateSavedAnim, {
+            toValue: 1,
+            damping: 14,
+            mass: 0.7,
+            stiffness: 180,
+            useNativeDriver: true,
+        }).start();
+
+        templateSavedTimerRef.current = setTimeout(() => {
+            Animated.timing(templateSavedAnim, {
+                toValue: 0,
+                duration: 220,
+                easing: Easing.out(Easing.quad),
+                useNativeDriver: true,
+            }).start(() => {
+                setShowTemplateSavedPopup(false);
+            });
+        }, 1200);
+    };
 
     const loadContact = async (contactId: string) => {
         try {
@@ -283,12 +334,28 @@ export default function ContactDetailScreen() {
             return;
         }
 
-        if (!templateLabel.trim()) {
+        if (savingTemplate) {
+            return;
+        }
+
+        const normalizedLabel = templateLabel.trim();
+        if (!normalizedLabel) {
             Alert.alert('Template label required', 'Enter a label before saving this template.');
             return;
         }
 
         try {
+            setSavingTemplate(true);
+
+            const labelAlreadyExists = await PaymentTemplateRepository.hasTemplateLabelForContact(
+                contact.id,
+                normalizedLabel
+            );
+            if (labelAlreadyExists) {
+                Alert.alert('Template label already used', 'Choose a different label for this contact.');
+                return;
+            }
+
             const amountRaw = amountToRaw(amount, selectedToken.decimals);
             if (amountRaw <= 0n) {
                 Alert.alert('Invalid amount', 'Template amount must be greater than zero.');
@@ -299,7 +366,7 @@ export default function ContactDetailScreen() {
             const template: PaymentTemplate = {
                 id: `${now}-${Math.random().toString(36).slice(2, 10)}`,
                 contactId: contact.id,
-                label: templateLabel.trim(),
+                label: normalizedLabel,
                 mintAddress: selectedToken.mintAddress,
                 amountRaw: amountRaw.toString(),
                 memo: memo.trim() || undefined,
@@ -310,11 +377,15 @@ export default function ContactDetailScreen() {
 
             await PaymentTemplateRepository.addTemplate(template);
             await loadTemplates(contact.id);
+            setSelectedTemplateId(template.id);
+            setTemplateLabel('');
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert('Template saved', 'This payment template is now available for quick sends.');
+            showTemplateSavedFeedback();
         } catch (error) {
             console.error('Failed to save payment template:', error);
             Alert.alert('Save failed', 'Could not save the payment template.');
+        } finally {
+            setSavingTemplate(false);
         }
     };
 
@@ -586,24 +657,40 @@ export default function ContactDetailScreen() {
                     )}
                 </View>
 
-                <TemplateChips templates={templates} tokenMap={tokenMap} onSelect={handleTemplateSelect} />
-
                 <View style={styles.heroActions}>
                     <IconActionButton
-                        icon={<Ionicons name="call" size={28} color={Colors.background} />}
+                        icon={<Ionicons name="paper-plane" size={28} color={Colors.background} />}
+                        label="Pay"
+                        onPress={handleOpenSend}
+                        style={styles.heroButtonPrimary}
+                        labelStyle={styles.heroLabelPrimary}
+                    />
+                    <IconActionButton
+                        icon={<Ionicons name="call" size={24} color={Colors.text} />}
                         label="Call"
                         onPress={handleCall}
-                        style={styles.heroButtonPrimary}
+                        style={styles.heroButtonSecondary}
                         labelStyle={styles.heroLabel}
                     />
                     <IconActionButton
-                        icon={<Ionicons name="paper-plane" size={28} color={Colors.text} />}
-                        label="Pay"
-                        onPress={handleOpenSend}
+                        icon={<Ionicons name="share-social" size={24} color={Colors.text} />}
+                        label="Share"
+                        onPress={handleShare}
                         style={styles.heroButtonSecondary}
-                        labelStyle={styles.heroLabelSecondary}
+                        labelStyle={styles.heroLabel}
                     />
                 </View>
+
+                {templates.length > 0 && (
+                    <View style={styles.quickPaySection}>
+                        <TemplateChips
+                            templates={templates}
+                            tokenMap={tokenMap}
+                            onSelect={handleTemplateSelect}
+                            onViewAll={() => router.push('/templates')}
+                        />
+                    </View>
+                )}
 
                 <View style={styles.historySection}>
                     <View style={styles.historyHeaderRow}>
@@ -682,9 +769,8 @@ export default function ContactDetailScreen() {
                 </View>
 
                 <View style={styles.footerActions}>
-                    <TextButton title="Share Contact" onPress={handleShare} style={styles.footerButton} />
                     <TextButton
-                        title="Delete"
+                        title="Delete Contact"
                         onPress={handleDelete}
                         style={styles.footerButton}
                         labelStyle={{ color: Colors.error || '#FF3B30' }}
@@ -703,11 +789,13 @@ export default function ContactDetailScreen() {
                 loadingTokens={loadingTokens}
                 connectingWallet={wallet.connecting}
                 sending={sending}
+                savingTemplate={savingTemplate}
                 amount={amount}
                 memo={memo}
                 templateLabel={templateLabel}
                 onClose={() => {
                     setSendVisible(false);
+                    setShowTemplateSavedPopup(false);
                     resetSendDraft();
                 }}
                 onConnect={handleConnectWallet}
@@ -729,6 +817,35 @@ export default function ContactDetailScreen() {
                 onSend={handleSendNow}
                 onSaveTemplate={handleSaveTemplate}
             />
+
+            <Modal visible={showTemplateSavedPopup} transparent animationType="none" statusBarTranslucent>
+                <View style={styles.templateSavedOverlay}>
+                    <Animated.View
+                        style={[
+                            styles.templateSavedCard,
+                            {
+                                opacity: templateSavedAnim,
+                                transform: [
+                                    {
+                                        scale: templateSavedAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [0.92, 1],
+                                        }),
+                                    },
+                                ],
+                            },
+                        ]}
+                    >
+                        <View style={styles.templateSavedIconCircle}>
+                            <Ionicons name="checkmark" size={20} color={Colors.background} />
+                        </View>
+                        <Text style={styles.templateSavedTitle}>Template saved</Text>
+                        <Text style={styles.templateSavedSubtitle}>
+                            Ready for quick sends.
+                        </Text>
+                    </Animated.View>
+                </View>
+            </Modal>
         </ScreenContainer>
     );
 }
@@ -742,7 +859,7 @@ const styles = StyleSheet.create({
     identitySection: {
         alignItems: 'center',
         marginTop: Layout.spacing.lg,
-        marginBottom: Layout.spacing.lg,
+        marginBottom: Layout.spacing.md,
     },
     name: {
         ...Typography.styles.title,
@@ -761,9 +878,9 @@ const styles = StyleSheet.create({
     heroActions: {
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: Layout.spacing.xl,
-        marginBottom: Layout.spacing.xxl,
-        marginTop: Layout.spacing.md,
+        gap: 21,
+        marginBottom: 21,
+        marginTop: Layout.spacing.sm,
     },
     heroButtonPrimary: {
         width: 64,
@@ -789,15 +906,18 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         elevation: 2,
     },
+    heroLabelPrimary: {
+        marginTop: 8,
+        fontWeight: '700',
+        color: Colors.text,
+    },
     heroLabel: {
         marginTop: 8,
         fontWeight: '600',
         color: Colors.text,
     },
-    heroLabelSecondary: {
-        marginTop: 8,
-        fontWeight: '600',
-        color: Colors.text,
+    quickPaySection: {
+        marginBottom: Layout.spacing.xl,
     },
     historySection: {
         marginBottom: Layout.spacing.xl,
@@ -893,14 +1013,55 @@ const styles = StyleSheet.create({
         lineHeight: 22,
     },
     footerActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
+        alignItems: 'center',
         marginTop: 'auto',
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: Colors.border,
-        paddingTop: Layout.spacing.lg,
+        paddingTop: 21,
     },
     footerButton: {
+        paddingHorizontal: Layout.spacing.md,
+    },
+    templateSavedOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0, 0, 0, 0.18)',
+        alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: Layout.spacing.lg,
+    },
+    templateSavedCard: {
+        width: '100%',
+        maxWidth: 332,
+        borderRadius: 21,
+        backgroundColor: Colors.background,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        paddingHorizontal: 21,
+        paddingVertical: 13,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.12,
+        shadowRadius: 22,
+        elevation: 10,
+    },
+    templateSavedIconCircle: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: Colors.text,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    templateSavedTitle: {
+        ...Typography.styles.body,
+        color: Colors.text,
+        fontWeight: '700',
+    },
+    templateSavedSubtitle: {
+        ...Typography.styles.caption,
+        color: Colors.textSecondary,
+        marginTop: 3,
     },
 });

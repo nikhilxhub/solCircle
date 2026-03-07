@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Animated,
+    Modal,
+    PanResponder,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { Colors } from '@/shared/theme/Colors';
 import { Layout } from '@/shared/theme/Layout';
 import { Typography } from '@/shared/theme/Typography';
@@ -19,6 +29,7 @@ interface SendSheetProps {
     loadingTokens: boolean;
     connectingWallet: boolean;
     sending: boolean;
+    savingTemplate: boolean;
     amount: string;
     memo: string;
     templateLabel: string;
@@ -45,6 +56,7 @@ export function SendSheet({
     loadingTokens,
     connectingWallet,
     sending,
+    savingTemplate,
     amount,
     memo,
     templateLabel,
@@ -60,13 +72,78 @@ export function SendSheet({
     onSaveTemplate,
 }: SendSheetProps) {
     const [tokenSelectorOpen, setTokenSelectorOpen] = useState(false);
+    const translateY = useRef(new Animated.Value(0)).current;
+    const scrollOffsetY = useRef(0);
+
+    const resetSheetPosition = useCallback(() => {
+        Animated.spring(translateY, {
+            toValue: 0,
+            damping: 22,
+            stiffness: 220,
+            mass: 0.7,
+            useNativeDriver: true,
+        }).start();
+    }, [translateY]);
+
+    const dismissWithSlide = useCallback(() => {
+        Animated.timing(translateY, {
+            toValue: 420,
+            duration: 180,
+            useNativeDriver: true,
+        }).start(() => {
+            translateY.setValue(0);
+            onClose();
+        });
+    }, [onClose, translateY]);
+
+    useEffect(() => {
+        if (visible) {
+            translateY.setValue(0);
+        }
+    }, [translateY, visible]);
+
+    const dragResponder = useMemo(
+        () =>
+            PanResponder.create({
+                onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+                    const isDownwardVerticalSwipe =
+                        gestureState.dy > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+
+                    if (!isDownwardVerticalSwipe) {
+                        return false;
+                    }
+
+                    // Only start sheet drag when the inner content is already at the top.
+                    return scrollOffsetY.current <= 0;
+                },
+                onPanResponderMove: (_, gestureState) => {
+                    if (gestureState.dy > 0) {
+                        translateY.setValue(gestureState.dy);
+                    }
+                },
+                onPanResponderRelease: (_, gestureState) => {
+                    if (gestureState.dy > 120 || gestureState.vy > 1.1) {
+                        dismissWithSlide();
+                        return;
+                    }
+                    resetSheetPosition();
+                },
+                onPanResponderTerminate: () => {
+                    resetSheetPosition();
+                },
+            }),
+        [dismissWithSlide, resetSheetPosition, translateY]
+    );
 
     return (
         <>
             <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
                 <View style={styles.overlay}>
-                    <View style={styles.sheet}>
-                        <View style={styles.handle} />
+                    <TouchableOpacity style={styles.backdropTapArea} activeOpacity={1} onPress={dismissWithSlide} />
+                    <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} {...dragResponder.panHandlers}>
+                        <View style={styles.handleTouchArea}>
+                            <View style={styles.handle} />
+                        </View>
 
                         <View style={styles.headerRow}>
                             <Text style={styles.title}>Send</Text>
@@ -75,7 +152,14 @@ export function SendSheet({
                             </View>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.scrollContent}
+                            scrollEventThrottle={16}
+                            onScroll={(event) => {
+                                scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                            }}
+                        >
                             <View style={styles.identityBlock}>
                                 <Text style={styles.sectionLabel}>To</Text>
                                 <Text style={styles.toName}>{recipientName}</Text>
@@ -134,7 +218,7 @@ export function SendSheet({
                                         placeholder="Payment note"
                                     />
                                     <InputField
-                                        label="Template Label (Optional)"
+                                        label="Template Label"
                                         value={templateLabel}
                                         onChangeText={onTemplateLabelChange}
                                         placeholder="Rent, Lunch, Weekly payout"
@@ -157,7 +241,13 @@ export function SendSheet({
                                             title="Save Template"
                                             onPress={onSaveTemplate}
                                             variant="outline"
-                                            disabled={!templateLabel.trim() || !selectedToken || !amount.trim()}
+                                            loading={savingTemplate}
+                                            disabled={
+                                                savingTemplate ||
+                                                !templateLabel.trim() ||
+                                                !selectedToken ||
+                                                !amount.trim()
+                                            }
                                             style={styles.actionButton}
                                         />
                                     </View>
@@ -165,8 +255,8 @@ export function SendSheet({
                             )}
                         </ScrollView>
 
-                        <TextButton title="Close" onPress={onClose} style={styles.closeButton} />
-                    </View>
+                        <TextButton title="Close" onPress={dismissWithSlide} style={styles.closeButton} />
+                    </Animated.View>
                 </View>
             </Modal>
 
@@ -187,6 +277,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         backgroundColor: 'rgba(0,0,0,0.28)',
     },
+    backdropTapArea: {
+        ...StyleSheet.absoluteFillObject,
+    },
     sheet: {
         backgroundColor: Colors.background,
         borderTopLeftRadius: 28,
@@ -196,13 +289,18 @@ const styles = StyleSheet.create({
         paddingBottom: Layout.spacing.lg,
         maxHeight: '90%',
     },
+    handleTouchArea: {
+        alignSelf: 'center',
+        paddingVertical: Layout.spacing.sm,
+        paddingHorizontal: Layout.spacing.lg,
+        marginBottom: Layout.spacing.xs,
+    },
     handle: {
         alignSelf: 'center',
         width: 44,
         height: 4,
         borderRadius: 2,
         backgroundColor: Colors.border,
-        marginBottom: Layout.spacing.md,
     },
     headerRow: {
         flexDirection: 'row',

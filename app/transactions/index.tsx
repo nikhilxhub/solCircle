@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -64,6 +64,7 @@ const FILTER_OPTIONS: FilterOption[] = [
     { value: 'canceled', label: 'Canceled' },
     { value: 'pending', label: 'Pending' },
 ];
+const TRANSACTION_PAGE_SIZE = 100;
 
 function createRhythm(width: number): Rhythm {
     const phi = 1.618;
@@ -339,6 +340,12 @@ function createStyles(r: Rhythm) {
             paddingTop: r.md,
             gap: r.xs,
         },
+        loadingMoreState: {
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingVertical: r.sm,
+            gap: r.xs,
+        },
         loadingText: {
             ...Typography.styles.caption,
             color: Colors.textSecondary,
@@ -379,16 +386,27 @@ export default function TransactionsHistoryScreen() {
     const [selectedFilter, setSelectedFilter] = useState<TransactionListFilter>(parseFilterParam(params.filter));
     const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const [nextOffset, setNextOffset] = useState(0);
+    const loadingMoreRef = useRef(false);
 
-    const loadTransactions = useCallback(async () => {
+    const loadInitialTransactions = useCallback(async () => {
         try {
             setLoading(true);
+            setLoadingMore(false);
+            loadingMoreRef.current = false;
+            setHasMore(true);
+            setNextOffset(0);
             const rows = await TransactionRepository.getTransactions({
                 contactId,
                 filter: selectedFilter,
-                limit: 300,
+                limit: TRANSACTION_PAGE_SIZE,
+                offset: 0,
             });
             setTransactions(rows);
+            setNextOffset(rows.length);
+            setHasMore(rows.length === TRANSACTION_PAGE_SIZE);
         } catch (error) {
             console.error('Failed to load transactions:', error);
             Alert.alert('History unavailable', 'Could not load transaction history.');
@@ -397,10 +415,40 @@ export default function TransactionsHistoryScreen() {
         }
     }, [contactId, selectedFilter]);
 
+    const loadMoreTransactions = useCallback(async () => {
+        if (loading || loadingMoreRef.current || !hasMore) {
+            return;
+        }
+
+        const currentOffset = nextOffset;
+        try {
+            loadingMoreRef.current = true;
+            setLoadingMore(true);
+            const rows = await TransactionRepository.getTransactions({
+                contactId,
+                filter: selectedFilter,
+                limit: TRANSACTION_PAGE_SIZE,
+                offset: currentOffset,
+            });
+            setTransactions((prev) => [...prev, ...rows]);
+            setNextOffset(currentOffset + rows.length);
+            setHasMore(rows.length === TRANSACTION_PAGE_SIZE);
+        } catch (error) {
+            console.error('Failed to load more transactions:', error);
+        } finally {
+            loadingMoreRef.current = false;
+            setLoadingMore(false);
+        }
+    }, [contactId, hasMore, loading, nextOffset, selectedFilter]);
+
+    const handleEndReached = useCallback(() => {
+        void loadMoreTransactions();
+    }, [loadMoreTransactions]);
+
     useFocusEffect(
         useCallback(() => {
-            loadTransactions();
-        }, [loadTransactions])
+            void loadInitialTransactions();
+        }, [loadInitialTransactions])
     );
 
     const rows = useMemo(() => mapToRows(transactions), [transactions]);
@@ -537,6 +585,16 @@ export default function TransactionsHistoryScreen() {
                             </TouchableOpacity>
                         );
                     }}
+                    onEndReachedThreshold={0.4}
+                    onEndReached={handleEndReached}
+                    ListFooterComponent={
+                        loadingMore ? (
+                            <View style={styles.loadingMoreState}>
+                                <ActivityIndicator size="small" color={Colors.text} />
+                                <Text style={styles.loadingText}>Loading more transactions...</Text>
+                            </View>
+                        ) : null
+                    }
                     showsVerticalScrollIndicator={false}
                 />
             </View>

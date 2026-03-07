@@ -82,7 +82,7 @@ export default function EditProfileScreen() {
                             label="Wallet Address"
                             value={walletAddress}
                             onChangeText={setWalletAddress}
-                            placeholder="0x..."
+                            placeholder="solana public key"
                             autoCapitalize="none"
                         />
                         <InputField

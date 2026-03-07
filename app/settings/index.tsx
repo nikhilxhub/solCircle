@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/shared/components/ScreenContainer';
 import { AppHeader } from '@/shared/components/AppHeader';
@@ -18,7 +18,6 @@ export default function SettingsScreen() {
     const { network, networkLabel, setNetwork } = useAppNetwork();
     const wallet = useWallet();
 
-    const [biometricEnabled, setBiometricEnabled] = useState(false);
     const [updatingNetwork, setUpdatingNetwork] = useState(false);
     const walletAddress = wallet.walletAddress;
 
@@ -70,7 +69,9 @@ export default function SettingsScreen() {
                 <View style={styles.section}>
                     <ListItem label="My Profile" showChevron onPress={() => router.push('/settings/profile')} />
                     <ListItem label="Transaction History" showChevron onPress={() => router.push('/transactions')} />
+                    <ListItem label="Saved Templates" showChevron onPress={() => router.push('/templates')} />
 
+                    {/*
                     <View style={styles.row}>
                         <View>
                             <Text style={styles.label}>Biometric Lock</Text>
@@ -84,6 +85,7 @@ export default function SettingsScreen() {
                             ios_backgroundColor={Colors.border}
                         />
                     </View>
+                    */}
 
                     <SectionDivider />
 
